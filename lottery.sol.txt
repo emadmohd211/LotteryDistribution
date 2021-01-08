@@ -1,0 +1,162 @@
+// SPDX-License-Identifier: GPL-3.0
+
+pragma solidity >=0.7.0 <0.8.0;
+
+
+contract Lottery{
+  
+   address private owner;
+    uint no_participants=0; // for counting number of participants.
+    mapping (uint => address) public participants; // stores the participants
+    
+    mapping (uint  => uint256) participants_payment; // store participant payment respective to above storage.
+    
+    uint totalAmountInvestedByWinners=0;  // this sums up total amount invested by winners.
+
+     mapping (address => uint256) public  winner_wonAmount ; // final one that stores the final result for withdrawl;
+      // this struct stores the participant and the percentage of amount he invested with regard to total lottery collected amount.
+     struct ParticipantDetails{
+         address participant;
+         uint256 percentInvested;
+     }
+     
+     // this stores the winners and their details..
+     mapping(uint => ParticipantDetails) winners;
+     uint lotteryAmount ; // stores the total lottery amount
+     
+      modifier onlyOwner(){
+        require(msg.sender == owner);
+        _;
+    }
+    
+    
+     constructor ()  {
+         owner = msg.sender;   // owner of the contract
+     }
+     
+    // this function receives 1 ether from every participant in the lottery
+    function participatePayFixedAmount() public payable{
+        
+        require(msg.value == 1 ether);
+        
+        no_participants++;
+        participants[no_participants] = msg.sender;
+        
+    }
+    
+    // this function receives any amount from the participant but not 0 and saves the participants and the amount they send.
+     function participatePayYourChoice() public payable{
+        
+        require(msg.value > 0); // checks if the value is not 0
+         no_participants++;
+        participants[no_participants] = msg.sender; // saves the participant address
+       
+        participants_payment[no_participants] = msg.value; // saves the amount sent by participant..
+        lotteryAmount = lotteryAmount + msg.value; //sum up all the lottery amount to be used for later.
+        
+    }
+    
+    
+    /*
+     THE LOGIC FOR DISTIBUTING lotteryAmount AMOUNT AMOUNG WINNERS IN CASE WHEN EVERY PARTICIPANT PAYS BY CHOICE IS THAT,
+     WE FIRST CALCULATE THE %AGE OF EACH WINNER TO THE TOTAL LOTTERY AMOUNT AND STORE THAT IN ParticipantDetails STRUCT WITH ADDRESS OF THE WINNER IN MAPPING,
+     THEN WE CALCULATE TOTAL AMOUNT INVESTED BY LOSERS AND GET ITS %AGE TO THE TOTAL lotteryAmount, THEN WE DIVIDE THE LOSERS INVESTED %AGE BY THE TOTAL NO. of
+     WINNERS,WHICH WE THEN ADD EQUALLY TO ALL THE WINNERS' STORED INVESTED PERCENTAGE IN STRUCT. BY doing this, the overall distribution %age would be 100.So, each 
+     winner will get first his invested amount + equal share in losers invested amount.
+    */
+    function winnersWhoPaidByChoice() public onlyOwner{
+        
+        uint no_of_winners=0;
+       
+        
+        uint256 totalAmountOfLosers =0; // stores the total amount invested by losers..
+        uint256 percentageAmountOfLosers=0;
+        uint256 distributePercentAmountWinners=0;
+        
+        
+        // I chose the 1st half of the total participants  as winners by default;
+        
+        if(no_participants % 2 ==0){
+            
+            no_of_winners = no_participants/2;
+        }else{
+            no_of_winners = no_participants/2 +1;
+        }
+        
+        
+        //iterate through winners..
+        for(uint i =1; i<= no_of_winners;i++){
+            
+            // get how much amount the winner has invested
+            uint256 invested = participants_payment[i];
+            
+            //get the percentage with the total lottery amount collected..
+            uint256 percent = (invested/lotteryAmount)*100;
+           // assign the percentage to the winner details   in the  ParticipantDetails struct
+           ParticipantDetails memory pDetails;
+           pDetails.participant = participants[i]; // store the address
+           pDetails.percentInvested = percent; // store the percent invested to total lottery amount collected.
+    
+          // also keep adding total amount invested by all winners
+            totalAmountInvestedByWinners = totalAmountInvestedByWinners + invested;
+            
+            // assign pdetails of winner to the winners mapping
+            winners[i] = pDetails;
+        }
+        
+        //get the total amount invested by all losers
+        totalAmountOfLosers = lotteryAmount - totalAmountInvestedByWinners;
+        
+        percentageAmountOfLosers = (totalAmountOfLosers / lotteryAmount)*100;
+        
+        //divide loserpercentageamount by the number of winners and distribute it equally to the winners by adding it to their percentage 
+        //so that overall percent of distribution is 100.
+        distributePercentAmountWinners =  percentageAmountOfLosers/no_of_winners;
+        
+        for(uint i =1; i <= no_of_winners; i++){
+            
+            // add the percentInvested by winner with the equal share in the losers percent.
+            uint percentWon= winners[i].percentInvested + distributePercentAmountWinners;
+            
+            //get the lottery winning amount
+            uint256 amountWon = (lotteryAmount * percentWon)/100;
+            
+            // store the final winning amount of the winner in winner_wonAmount
+            winner_wonAmount[winners[i].participant]= amountWon;
+           
+        }
+        lotteryAmount =0;
+        
+       
+    }
+    
+    function PayWinner(address payable _winner) public onlyOwner{
+        
+        require(winner_wonAmount[_winner] > 0); //to check if the payable is the winner
+        
+        uint256 amountWon = winner_wonAmount[_winner];
+         _winner.transfer(amountWon);
+    }
+    //function to distribute lottery among participants who paid  fixed amount.
+    function WinnersWhoPaidFixedAmount() public onlyOwner {
+        
+        uint no_of_winners=0;
+        // BY DEFAULT WE CHOSE FIRST HALF OF THE TOTAL NO. OF PARTICIPANTS AS WINNERS, INCASE THE TOTAL NUMBER IS ODD THEN WE CHOOSE TOTAL HALF+1.
+        if(no_participants % 2 ==0){
+            
+            no_of_winners = no_participants/2;
+        }else{
+            no_of_winners = no_participants/2 +1;
+        }
+        
+        lotteryAmount = no_participants* 1 ether;
+        
+        uint amountWon = lotteryAmount/no_of_winners;
+    
+        for(uint i=1; i<= no_of_winners;i++){
+             // store the final winning amount of the winner in winner_wonAmount
+            winner_wonAmount[participants[i]]= amountWon;
+        }
+        lotteryAmount =0;
+    }
+}
